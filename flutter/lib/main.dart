@@ -1,9 +1,17 @@
 import 'package:flutter/material.dart';
 import 'app/theme.dart';
 import 'app/router.dart';
+import 'core/api/api_client.dart';
 
-void main() {
+const _apiBaseUrl = String.fromEnvironment(
+  'API_BASE_URL',
+  defaultValue: 'http://10.0.2.2:5000',
+);
+
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  ApiClient.instance.init(baseUrl: _apiBaseUrl);
+  await ApiClient.instance.loadTokens();
   runApp(const VanAppRoot());
 }
 

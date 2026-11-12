@@ -39,6 +39,9 @@ class WalletService {
   }
 
   /// POST /api/v1/wallet/topups
+  /// Methods: mercadopago, cvu, bank
+  /// For mercadopago: backend crea preference MP y retorna init_point.
+  /// Para cvu/bank: init_point es null, requiere aprobación manual.
   Future<TopUpRequest> createTopUp({
     required double amount,
     required String method,
@@ -83,5 +86,25 @@ class WalletService {
     final data = _extractData(response);
     final items = data['items'] as List? ?? data as List? ?? [];
     return items.map((j) => FavoriteAddress.fromJson(j)).toList();
+  }
+
+  /// POST /api/v1/wallet/topups/{id}/voucher
+  /// Sube comprobante de transferencia (base64). Solo propio, pending.
+  Future<void> uploadVoucher(int id, String base64Image) async {
+    await _api.dio.post(
+      '/api/v1/wallet/topups/$id/voucher',
+      data: {'image': base64Image},
+    );
+  }
+
+  /// GET /api/v1/wallet/topup/verify?payment_id=
+  /// Acredita un pago de recarga verificando server-side.
+  Future<TopUpRequest> verifyTopupPayment(int paymentId) async {
+    final response = await _api.dio.get(
+      '/api/v1/wallet/topup/verify',
+      queryParameters: {'payment_id': paymentId},
+    );
+    final data = _extractData(response);
+    return TopUpRequest.fromJson(data);
   }
 }

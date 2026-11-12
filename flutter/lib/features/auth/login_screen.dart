@@ -44,7 +44,7 @@ class _LoginScreenState extends State<LoginScreen> {
       if (mounted) {
         final user = result.user;
         if (user.isBoth) {
-          context.go('/home');
+          context.go('/select-mode');
         } else if (user.isDriver) {
           context.go('/driver');
         } else {

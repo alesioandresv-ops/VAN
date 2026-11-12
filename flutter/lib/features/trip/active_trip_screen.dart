@@ -35,21 +35,21 @@ class _ActiveTripScreenState extends State<ActiveTripScreen> {
 
   Future<void> _loadTrip() async {
     try {
-      final trips = await _tripService.listTrips(status: 'requested');
-      if (trips.isEmpty) {
-        final ongoing = await _tripService.listTrips(status: 'ongoing');
-        if (ongoing.isEmpty) {
-          if (mounted) {
-            setState(() {
-              _error = 'No hay viaje activo';
-              _loading = false;
-            });
-          }
-          return;
+      for (final status in const ['requested', 'accepted', 'ongoing']) {
+        final trips = await _tripService.listTrips(status: status);
+        if (trips.isNotEmpty) {
+          _trip = trips.first;
+          break;
         }
-        _trip = ongoing.first;
-      } else {
-        _trip = trips.first;
+      }
+      if (_trip == null) {
+        if (mounted) {
+          setState(() {
+            _error = 'No hay viaje activo';
+            _loading = false;
+          });
+        }
+        return;
       }
 
       if (mounted) {
@@ -319,12 +319,29 @@ class _ActiveTripScreenState extends State<ActiveTripScreen> {
                   fontSize: 18, fontWeight: FontWeight.bold),
             ),
           const SizedBox(height: 12),
-          ElevatedButton(
-            onPressed: _status?.status == 'ongoing' ? null : null,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppTheme.textSecondary,
+          Container(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            decoration: BoxDecoration(
+              color: AppTheme.surface,
+              borderRadius: BorderRadius.circular(12),
             ),
-            child: Text(_statusLabel()),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: (_status?.status ?? _trip?.status) == 'ongoing'
+                      ? null
+                      : const CircularProgressIndicator(strokeWidth: 2),
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  _statusLabel(),
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+              ],
+            ),
           ),
         ],
       ),

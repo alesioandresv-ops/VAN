@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../features/auth/login_screen.dart';
 import '../features/auth/register_screen.dart';
+import '../features/auth/select_mode_screen.dart';
 import '../features/passenger/passenger_home.dart';
 import '../features/passenger/request_trip_screen.dart';
 import '../features/trip/active_trip_screen.dart';
@@ -10,6 +11,8 @@ import '../features/driver/driver_home_screen.dart';
 import '../features/driver/driver_trip_screen.dart';
 import '../features/wallet/wallet_screen.dart';
 import '../features/profile/profile_screen.dart';
+import '../features/profile/edit_profile_screen.dart';
+import '../features/profile/change_password_screen.dart';
 import '../features/history/history_screen.dart';
 
 class VanApp {
@@ -25,6 +28,10 @@ class VanApp {
       GoRoute(
         path: '/register',
         builder: (_, __) => const RegisterScreen(),
+      ),
+      GoRoute(
+        path: '/select-mode',
+        builder: (_, __) => const SelectModeScreen(),
       ),
       GoRoute(
         path: '/home',
@@ -63,6 +70,14 @@ class VanApp {
       GoRoute(
         path: '/profile',
         builder: (_, __) => const ProfileScreen(),
+      ),
+      GoRoute(
+        path: '/profile/edit',
+        builder: (_, __) => const EditProfileScreen(),
+      ),
+      GoRoute(
+        path: '/profile/password',
+        builder: (_, __) => const ChangePasswordScreen(),
       ),
       GoRoute(
         path: '/history',

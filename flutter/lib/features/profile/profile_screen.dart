@@ -109,7 +109,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             const Divider(),
             _infoRow('Rol', _user?.role),
             const Divider(),
-            _infoRow('Verificado', _user?.isVerified ? 'Sí' : 'No'),
+            _infoRow('Verificado', (_user?.isVerified == true) ? 'Sí' : 'No'),
           ],
         ),
       ),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../app/theme.dart';
+import '../../core/api/api_error.dart';
 import '../../core/services/trip_service.dart';
 import '../../core/models/trip.dart';
 
@@ -15,6 +16,15 @@ class _DriverTripScreenState extends State<DriverTripScreen> {
   final _tripService = TripService();
   Trip? _trip;
   bool _loading = true;
+  bool _busy = false;
+
+  static const _paymentMethods = [
+    'efectivo',
+    'billetera',
+    'mercadopago',
+    'transferencia',
+    'tarjeta',
+  ];
 
   @override
   void initState() {
@@ -33,37 +43,82 @@ class _DriverTripScreenState extends State<DriverTripScreen> {
   }
 
   Future<void> _startTrip() async {
-    await _tripService.startTrip(widget.tripId);
-    await _loadTrip();
+    setState(() => _busy = true);
+    try {
+      await _tripService.startTrip(widget.tripId);
+      await _loadTrip();
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   Future<void> _completeTrip() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Finalizar Viaje'),
-        content: const Text('¿Confirmás que querés finalizar?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancelar'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Finalizar'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed == true) {
-      await _tripService.completeTrip(widget.tripId);
+    final method = await _selectPaymentMethod();
+    if (method == null) return;
+    setState(() => _busy = true);
+    try {
+      await _tripService.completeTrip(widget.tripId,
+          paymentMethod: method);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Viaje completado')),
+          SnackBar(content: Text('Viaje completado (${_methodLabel(method)})')),
         );
         context.pop();
       }
+    } on ApiError catch (e) {
+      if (mounted) {
+        if (e.isInsufficientBalance) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                  'El pasajero no tiene saldo en billetera. Elegí otro método de pago.'),
+            ),
+          );
+          await _loadTrip();
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error: ${e.message}')),
+          );
+        }
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<String?> _selectPaymentMethod() async {
+    final method = await showDialog<String>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: const Text('¿Cómo cobrás este viaje?'),
+        children: _paymentMethods
+            .map(
+              (m) => SimpleDialogOption(
+                onPressed: () => Navigator.pop(ctx, m),
+                child: Text(_methodLabel(m)),
+              ),
+            )
+            .toList(),
+      ),
+    );
+    if (method == null) return null;
+    return method;
+  }
+
+  String _methodLabel(String m) {
+    switch (m) {
+      case 'efectivo':
+        return 'Efectivo';
+      case 'billetera':
+        return 'Billetera VAN';
+      case 'mercadopago':
+        return 'Mercado Pago';
+      case 'transferencia':
+        return 'Transferencia';
+      case 'tarjeta':
+        return 'Tarjeta';
+      default:
+        return m;
     }
   }
 
@@ -117,15 +172,22 @@ class _DriverTripScreenState extends State<DriverTripScreen> {
                       const SizedBox(height: 24),
                       if (_trip!.status == 'accepted')
                         ElevatedButton(
-                          onPressed: _startTrip,
+                          onPressed: _busy ? null : _startTrip,
                           child: const Text('Iniciar Viaje'),
                         ),
                       if (_trip!.status == 'ongoing')
                         ElevatedButton(
-                          onPressed: _completeTrip,
+                          onPressed: _busy ? null : _completeTrip,
                           style: ElevatedButton.styleFrom(
                               backgroundColor: AppTheme.success),
-                          child: const Text('Finalizar Viaje'),
+                          child: _busy
+                              ? const SizedBox(
+                                  height: 20,
+                                  width: 20,
+                                  child: CircularProgressIndicator(
+                                      strokeWidth: 2),
+                                )
+                              : const Text('Finalizar Viaje'),
                         ),
                       if (_trip!.status == 'requested')
                         const Center(

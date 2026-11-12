@@ -10,6 +10,7 @@ class ApiClient {
 
   String? _accessToken;
   String? _refreshToken;
+  bool _refreshInProgress = false;
 
   String? get accessToken => _accessToken;
   bool get isAuthenticated => _accessToken != null;
@@ -33,13 +34,18 @@ class ApiClient {
         return handler.next(options);
       },
       onError: (error, handler) async {
-        if (error.response?.statusCode == 401 && _refreshToken != null) {
-          final refreshed = await _tryRefreshToken();
-          if (refreshed) {
-            error.requestOptions.headers['Authorization'] =
-                'Bearer $_accessToken';
-            final response = await dio.fetch(error.requestOptions);
-            return handler.resolve(response);
+        if (error.response?.statusCode == 401 && _refreshToken != null && !_refreshInProgress) {
+          _refreshInProgress = true;
+          try {
+            final refreshed = await _tryRefreshToken();
+            if (refreshed) {
+              error.requestOptions.headers['Authorization'] =
+                  'Bearer $_accessToken';
+              final response = await dio.fetch(error.requestOptions);
+              return handler.resolve(response);
+            }
+          } finally {
+            _refreshInProgress = false;
           }
         }
         return handler.next(error);
@@ -66,6 +72,8 @@ class ApiClient {
       }
     } catch (_) {
       await logout();
+    } finally {
+      _refreshInProgress = false;
     }
     return false;
   }

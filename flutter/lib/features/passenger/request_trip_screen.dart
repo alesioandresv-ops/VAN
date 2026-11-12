@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import '../../app/theme.dart';
 import '../../core/services/trip_service.dart';
@@ -28,12 +29,43 @@ class _RequestTripScreenState extends State<RequestTripScreen> {
 
   LatLng? _pickupLatLng;
   LatLng? _dropoffLatLng;
+  String? _idempotencyKey;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadStoredIdempotencyKey();
+    _useCurrentLocationAsPickup();
+  }
 
   @override
   void dispose() {
     _pickupCtrl.dispose();
     _dropoffCtrl.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadStoredIdempotencyKey() async {
+    final prefs = await SharedPreferences.getInstance();
+    _idempotencyKey = prefs.getString('idempotency_key');
+  }
+
+  Future<void> _saveIdempotencyKey(String key) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('idempotency_key', key);
+  }
+
+  Future<void> _useCurrentLocationAsPickup() async {
+    final pos = await _locationService.getCurrentPosition();
+    if (pos == null) return;
+    _pickupLatLng = LatLng(pos.latitude, pos.longitude);
+    try {
+      final geo = await _driverService.geocode('${pos.latitude},${pos.longitude}');
+      if (mounted && _pickupCtrl.text.isEmpty) {
+        _pickupCtrl.text = geo['display_name']?.toString() ?? '';
+        setState(() {});
+      }
+    } catch (_) {}
   }
 
   Future<void> _searchNearby() async {
@@ -66,19 +98,29 @@ class _RequestTripScreenState extends State<RequestTripScreen> {
     });
 
     try {
-      final idempotencyKey =
-          DateTime.now().millisecondsSinceEpoch.toString();
+      if (_dropoffLatLng == null) {
+        try {
+          final geo = await _driverService.geocode(_dropoffCtrl.text.trim());
+          _dropoffLatLng = LatLng(
+            double.parse(geo['lat'].toString()),
+            double.parse(geo['lng'].toString()),
+          );
+        } catch (_) {}
+      }
+
+      final key = _idempotencyKey ?? DateTime.now().millisecondsSinceEpoch.toString();
       await _tripService.createTrip(
         pickupAddress: _pickupCtrl.text,
         dropoffAddress: _dropoffCtrl.text,
         vehicleType: _vehicleType,
         paymentMethod: _paymentMethod,
-        idempotencyKey: idempotencyKey,
+        idempotencyKey: key,
         pickupLat: _pickupLatLng?.latitude,
         pickupLng: _pickupLatLng?.longitude,
         dropoffLat: _dropoffLatLng?.latitude,
         dropoffLng: _dropoffLatLng?.longitude,
       );
+      _saveIdempotencyKey(key);
       if (mounted) {
         context.push('/trip/active');
       }

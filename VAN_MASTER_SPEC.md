@@ -2,7 +2,7 @@
 
 > Documento maestro del proyecto. Define visión, decisiones técnicas aprobadas, arquitectura, roadmap, reglas de desarrollo, estándares de código, convenciones de API, modelo de negocio y workstreams.
 >
-> Última actualización: 2026-08-24 · Estado: **Activo** · Fuente de verdad técnica: código en `backend/`, `tests/`, `migrations/`, ADRs en `docs/adr/`, `docs/api-contract-v1.md` y `AGENTS.md` (en ese orden de autoridad).
+> Última actualización: 2026-09-01 · Estado: **Activo** · Fuente de verdad técnica: código en `backend/`, `tests/`, `migrations/`, ADRs en `docs/adr/`, `docs/api-contract-v1.md` y `AGENTS.md` (en ese orden de autoridad).
 
 ---
 
@@ -642,11 +642,66 @@ Estado reproducible tras completar la **Fase A — API v1 completa** (A1–A6) y
 - **History**: history_screen.dart (viajes completados + cancelados).
 
 ### Pendiente o próximo a realizar
-1. Instalar Flutter SDK + `flutter pub get` + configurar Google Maps API key.
-2. `flutter run` y probar flujo completo E2E (registro → login → solicitar viaje → conductor acepta → viaje → calificación).
+1. ~~Instalar Flutter SDK + `flutter pub get` + configurar Google Maps API key~~ → **HECHO el SDK (3.47.2 en `C:\src\flutter`), pub get OK; falta key real de Maps (paso manual en GCP).** Ver §17.
+2. `flutter run` y probar flujo completo E2E (registro → login → solicitar viaje → conductor acepta → viaje → calificación). → **Pendiente: terminar SDK Android (licencias + packages), configurar key Maps, conectar teléfono físico.** Ver §17.
 3. Build APK release para Google Play.
 4. Configurar env vars en producción: `BASE_URL=https://van.com.ar`, `MP_ENV=production` + credenciales prod, `MP_WEBHOOK_SECRET`.
 5. Opcional: `SENTRY_DSN` para error tracking.
 
+---
+
+## 17. Estado al cierre de la jornada (2026-09-01)
+
+Estado reproducible tras la sesión de **setup de entorno para compilar la app Flutter en celular físico** (Fase B, continuando la Fase A ya completa).
+
+### Entorno instalado en la máquina (Windows 10 Pro, 4 GB RAM — ultra-liviano)
+- **Flutter 3.47.2 stable** (Dart 3.13.2) en `C:\src\flutter`, añadido al PATH de usuario. Descargado de flutter.dev (winget NO publica el SDK oficial; ZIP verificado por SHA-256). `flutter --version` OK; `flutter pub get` OK.
+- **JDK Temurin 17.0.20.101** en `C:\Program Files\Eclipse Adoptium\jdk-17.0.20.101-hotspot` (winget `EclipseAdoptium.Temurin.17.JDK`). `JAVA_HOME` seteado a nivel Usuario (a nivel Machine falla: acceso denegado al registro sin admin).
+- **Android SDK — Opción B (tools CLI, sin Android Studio)**: `C:\Android\Sdk\cmdline-tools\latest\bin\sdkmanager.bat` operativo. **FALTA**: aceptar 7 licencias + instalar `platform-tools`, `platforms;android-35`, `build-tools;35.0.0` (ver Pendiente 1).
+- **Docker NO disponible** → backend levantado con SQLite temporal en `0.0.0.0:5000` (`/health` = 200). Válido para el E2E solicitado (el `.env` real apunta a PostgreSQL vía psycopg, host 127.0.0.1).
+
+### Flutter: código corregido en esta sesión (compilaba mal, ahora `flutter test` pasa ✅)
+- **`main.dart`**: cableado real de `ApiClient.instance.init(baseUrl: _apiBaseUrl)` + `loadTokens()`. Antes nunca se llamaba → `LateInitializationError`. `_apiBaseUrl` leído con `String.fromEnvironment('API_BASE_URL', defaultValue: 'http://10.0.2.2:5000')` → **no editar código**, se pasa por `--dart-define`.
+- **`app/theme.dart`**: le faltaba `import 'package:flutter/material.dart'`; `minimumHeight:` → `minimumSize: Size(0, 52)` (API removida en Flutter 3.47).
+- **`core/services/location_service.dart`**: `getCurrentPosition` sin `locationSettings` (API geolocator 11: `desiredAccuracy` + `timeLimit`).
+- **`features/profile/profile_screen.dart`**: `isVerified == true` (es `bool?`).
+- Rutas rotas → **creadas `EditProfileScreen` + `ChangePasswordScreen`** y registradas en router (`/profile/edit`, `/profile/password`).
+- **`active_trip_screen.dart`**: botón con `onPressed` siempre null (muerto, líneas 322-323) → panel de estado informativo; ahora consulta el tercer estado (`requested|accepted|ongoing`).
+- **`driver_trip_screen.dart`**: `_completeTrip` con selector de método de pago + manejo de `ApiError.isInsufficientBalance` (`INSUFFICIENT_BALANCE` → sigue ongoing) + re-carga del viaje.
+- **`home_screen.dart`**: stub inaccesible → **eliminado**.
+- **`pubspec.yaml`**: removidas referencias a fuentes Montserrat inexistentes (VanSans no se usa en Dart).
+- **`request_trip_screen.dart`**: geocodifica pickup (posición real del usuario) y dropoff vía `/api/v1/geo/geocode`, manda coordenadas reales a `createTrip`.
+- **Scaffolding regenerado**: `flutter create . --org com.van --project-name van --platforms android,ios` (71 archivos; antes `android/` estaba vacía). `applicationId`/`namespace` = **`com.van.van`**.
+- **`AndroidManifest.xml`**: permisos `INTERNET`, `ACCESS_FINE_LOCATION`, `ACCESS_COARSE_LOCATION`, `android:usesCleartextTraffic="true"` (HTTP local), y `<meta-data android:name="com.google.android.geo.API_KEY" android:value="YOUR_API_KEY"/>` (placeholder — línea 41).
+- **`test/widget_test.dart`**: reemplazado el test generado de `MyApp` (rompía) por smoke test de `VanAppRoot` → **All tests passed (1)**.
+- **`flutter analyze` FALLA en esta máquina**: el analysis server LSP crashea (exit 255) por la ruta con acento/espacio `C:/Users/Andrés N/Desktop/VAN` — issue de Dart, no del código. `flutter test` sigue compilando OK.
+
+### Google Maps API key — por qué NO está hecha y cómo completarla
+- NO se puede generar sin la cuenta de Google del usuario (requiere Google Cloud Console + facturación). El placeholder `YOUR_API_KEY` está en **`flutter/android/app/src/main/AndroidManifest.xml` (línea 41)**.
+- Para el E2E con placeholder: la app compila y se conecta al backend; **solo el mapa sale gris** (no es bloqueante para validar flujo). La key real se pega en esa misma línea cuando el usuario la cree (ver §18 — pasos).
+
+### Pendiente para la próxima sesión (mañana)
+1. **Terminar SDK Android** (env ya listo): aceptar las 7 licencias (`cmd /c "echo y | sdkmanager.bat --licenses"` varias veces) y `sdkmanager.bat "platform-tools" "platforms;android-35" "build-tools;35.0.0"`; luego `flutter config --android-sdk C:\Android\Sdk` y verificar con `flutter doctor -v`.
+2. **RAM 4 GB**: cerrar apps pesadas antes de buildear; en `flutter/android/gradle.properties` poner `org.gradle.jvmargs=-Xmx1024m` (y `org.gradle.daemon=false`/`org.gradle.parallel=true` si ayuda).
+3. **Firewall** (cmd como admin): `netsh advfirewall firewall add rule name="VAN Backend" dir=in action=allow protocol=TCP localport=5000`.
+4. **Teléfono físico**: activar modo desarrollador (7 toques en "Número de compilación") + Depuración USB; conectar por USB; validar con `flutter devices` / `adb devices`.
+5. **E2E**: backend ya en `0.0.0.0:5000`; IP local de la PC `192.168.0.220`; el teléfono debe estar en el mismo WiFi. Correr:
+   `flutter run -d <id> --dart-define=API_BASE_URL=http://192.168.0.220:5000`
+   Happy path: registro → login → solicitar viaje → un conductor acepta → viaje ongoing → cobro (método `efectivo`, sin billetera) → calificación.
+6. **Bugs menores de sesión actual** (si se ven en E2E): registro de pasajero no muestra teléfono, `register_screen` sin mensaje de éxito, `is_file_upload` en profile.
+
 ### Próximo incremento del roadmap
-**Fase B — App Flutter feature-complete**: construir todas las pantallas sobre la API v1 ya completa. Producción backend lista; pendiente configuración env vars: `BASE_URL=https://van.com.ar`, `MP_ENV=production` + credenciales prod, `MP_WEBHOOK_SECRET` en panel MP.
+**Fase B — App Flutter feature-complete sobre la API v1** (backend ya listo). Pendiente de entorno arriba; luego build APK release para Google Play.
+
+---
+
+## 18. Google Maps API key — cómo crearla y dónde pegarla (manual, requiere cuenta de Google)
+
+> No se puede automatizar: Google pide tu cuenta con facturación. La app funciona sin ella (solo el mapa sale gris, el modo placeholder `YOUR_API_KEY` deja pasar el E2E). Pasos para cuando la quieras real:
+
+1. **Crear/proyecto**: ir a https://console.cloud.google.com → crear proyecto (o usar uno existente).
+2. **Habilitar la API**: Menú → *APIs y servicios* → *Biblioteca* → buscar **"Maps SDK for Android"** → *Habilitar*. (Solo Android importa para esta app.)
+3. **Crear la key**: *APIs y servicios* → *Credenciales* → *+ CREAR CREDENCIALES* → *Clave de API*. Copiarla.
+4. **(Recomendado) Restringirla**: en la key → *Restringir clave* → "Restricciones de aplicación: Aplicaciones para Android" → *+Agregar*. En **nombre del paquete** usar `com.van.van` (applicationId real, ver `flutter/android/app/build.gradle.kts`) y en "Huella digital de firma" usar el SHA-1 del keystore (dev: lo imprime Gradle al buildear, o `flutter build apk` + `keytool -list -v -keystore ~/.android/debug.keystore -alias androiddebugkey -storepass android`). Firma debug y release son distintas.
+5. **Pegarla**: en `flutter/android/app/src/main/AndroidManifest.xml` línea 41, reemplazar `YOUR_API_KEY` → `AIza...`. Guardar y rebuildear.
+6. Si el mapa sigue gris tras la key: revisar que la API esté habilitada, que el paquete en la restricción coincida con `com.van.van`, y que el SHA-1 corresponda al tipo de build (debug vs release).
